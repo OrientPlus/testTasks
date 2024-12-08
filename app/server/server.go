@@ -212,7 +212,7 @@ func (s *Server) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Если ip сменился, отправляем предупреждение на почту
-	if claims.UserIP == ip {
+	if claims.UserIP != ip {
 		err = s.mailerUC.SendWarning(claims.UserLogin)
 		if err != nil {
 			s.logger.Warnf("it was not possible to send a warning about the ip address change to the mail %s; error: %s", claims.UserLogin, err.Error())
