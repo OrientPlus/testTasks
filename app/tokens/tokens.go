@@ -9,15 +9,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UcHandler struct {
+type TokensUC struct {
 	secret string
 }
 
-func NewUcHandler(secret string) *UcHandler {
-	return &UcHandler{secret: secret}
+func NewUcHandler(secret string) *TokensUC {
+	return &TokensUC{secret: secret}
 }
 
-func (uc *UcHandler) GenerateTokens(params entity.TokensParams) (entity.RawTokens, error) {
+func (uc *TokensUC) GenerateTokens(params entity.TokensParams) (entity.RawTokens, error) {
 	accessToken, err := uc.generateAccessToken(params)
 	if err != nil {
 		return entity.RawTokens{}, entity.ErrGenAccessToken
@@ -33,50 +33,94 @@ func (uc *UcHandler) GenerateTokens(params entity.TokensParams) (entity.RawToken
 	}, nil
 }
 
-func (uc *UcHandler) CheckRefreshToken(tokens entity.RawTokens) (bool, error) {
+func (uc *TokensUC) CheckTokenPair(tokens entity.RawTokens) (entity.TokensClaims, bool, error) {
 	accessToken, err := jwt.ParseWithClaims(tokens.AccessToken, &entity.TokensClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(uc.secret), nil
 	})
 	if err != nil {
-		return false, err
+		return entity.TokensClaims{}, false, err
 	}
 
 	if accessToken == nil || !accessToken.Valid {
-		return false, entity.ErrInvalidAccessToken
+		return entity.TokensClaims{}, false, entity.ErrInvalidAccessToken
 	}
 
 	claims, ok := accessToken.Claims.(*entity.TokensClaims)
 	if !ok {
-		return false, entity.ErrRetrievingTokenClaims
+		return entity.TokensClaims{}, false, entity.ErrRetrievingTokenClaims
 	}
 
 	data := fmt.Sprintf("%s%s%s%s%s", claims.UserGUID, claims.SessionID, claims.UserIP, uc.secret, tokens.AccessToken)
 	err = bcrypt.CompareHashAndPassword(tokens.RefreshToken, []byte(data))
 	if err != nil {
-		return false, entity.ErrMismatchedToken
+		return entity.TokensClaims{}, false, entity.ErrMismatchedToken
 	}
 
-	return true, nil
+	return *claims, true, nil
 }
 
-func (uc *UcHandler) generateAccessToken(params entity.TokensParams) (string, error) {
+func (uc *TokensUC) generateAccessToken(params entity.TokensParams) (string, error) {
 	// TODO добавить валидатор
 	claims := jwt.MapClaims{
-		"user_login": params.UserLogin,
-		"user_guid":  params.UserGUID,
+		"login":      params.UserLogin,
+		"guid":       params.UserGUID,
 		"session_id": params.SessionID,
 		"ip":         params.UserIP,
-		"exp":        time.Now().Add(15 * time.Minute).Unix(),
+		"exp":        time.Now().Add(entity.ATExpiredValue).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
 	return token.SignedString([]byte(uc.secret))
 }
 
-func (uc *UcHandler) generateRefreshToken(params entity.TokensParams, accessToken string) ([]byte, error) {
+func (uc *TokensUC) generateRefreshToken(params entity.TokensParams, accessToken string) ([]byte, error) {
 	// TODO добавить валидатор
 	data := fmt.Sprintf("%s%s%s%s%s", params.UserGUID, params.SessionID, params.UserIP, uc.secret, accessToken)
-	hash, err := bcrypt.GenerateFromPassword([]byte(data), bcrypt.DefaultCost)
 
-	return hash, err
+	blockSize := 72
+	var finalHash []byte
+	for i := 0; i < len(data); i += blockSize {
+		end := i + blockSize
+		if end > len(data) {
+			end = len(data)
+		}
+		blockHash, err := bcrypt.GenerateFromPassword([]byte(data[i:end]), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+
+		finalHash = append(finalHash, blockHash...)
+	}
+
+	return finalHash, nil
+}
+
+func (uc *TokensUC) GetUserParams(accessToken string) (entity.TokensClaims, error) {
+	token, err := jwt.ParseWithClaims(accessToken, &entity.TokensClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(uc.secret), nil
+	})
+	if err != nil {
+		return entity.TokensClaims{}, err
+	}
+
+	claims, ok := token.Claims.(*entity.TokensClaims)
+	if !ok {
+		return entity.TokensClaims{}, entity.ErrRetrievingTokenClaims
+	}
+
+	return *claims, nil
+}
+
+func (uc *TokensUC) CheckAccessToken(accessToken string) (bool, error) {
+	token, err := jwt.ParseWithClaims(accessToken, &entity.TokensClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(uc.secret), nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	if token == nil || !token.Valid {
+		return false, entity.ErrInvalidAccessToken
+	}
+	return true, nil
 }

@@ -5,6 +5,7 @@ all: build
 
 build:
 	mkdir -p bin
+	go mod tidy
 	go build -o $(BINARY_NAME) ./cmd/app
 
 clean:

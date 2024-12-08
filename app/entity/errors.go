@@ -14,4 +14,5 @@ var (
 	ErrInvalidAccessToken    = errors.New("server: invalid access token")
 	ErrRetrievingTokenClaims = errors.New("server: cannot retrieve token claims")
 	ErrMismatchedToken       = errors.New("server: mismatched token")
+	ErrEnvArgumentEmpty      = errors.New("env: argument is empty")
 )

@@ -1,6 +1,10 @@
 package entity
 
-import "github.com/golang-jwt/jwt/v5"
+import (
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
 
 type TokensParams struct {
 	UserLogin string
@@ -15,10 +19,18 @@ type RawTokens struct {
 }
 
 type TokensClaims struct {
-	UserLogin string `json:"user_login"`
-	UserGUID  string `json:"user_guid"`
+	UserLogin string `json:"login"`
+	UserGUID  string `json:"guid"`
 	SessionID string `json:"session_id"`
 	UserIP    string `json:"ip"`
-	Exp       string `json:"exp"`
+	Exp       int64  `json:"exp"`
 	jwt.RegisteredClaims
 }
+
+type UserParams struct {
+	Login string
+	GUID  string
+}
+
+var RTExpiredValue = time.Minute * 10
+var ATExpiredValue = time.Minute * 2
